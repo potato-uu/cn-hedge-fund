@@ -10,7 +10,9 @@
 
 纯 prompt 驱动，无外部代码依赖，数据通过 WebSearch 获取。
 
-[快速开始](#使用方式) · [四层架构](#四层架构v2-重构) · [开源 core vs 私有 runtime](#architecture-open-core-vs-private-runtime) · [免责声明](#免责声明)
+**Multi-Agent 设计模式实操（Orchestrator-Worker · Routing · Parallelization · Evaluator-Optimizer · Narrator）· 架构可直接迁移到 toB 销售决策辅助**
+
+[快速开始](#使用方式) · [四层架构](#四层架构v2-重构) · [Multi-Agent 设计模式](#multi-agent-设计模式anthropic-范式) · [销售场景迁移](#销售场景迁移逻辑tob-销售--售前--客户成功) · [开源 core vs 私有 runtime](#architecture-open-core-vs-private-runtime) · [免责声明](#免责声明)
 
 </div>
 
@@ -81,6 +83,51 @@ Decision Layer                     ← 信号 + risk budget 仓位
 ─────────────────────────────────
 Narration Layer                    ← 8 位大师解释（不投票）
 ```
+
+---
+
+## Multi-Agent 设计模式（Anthropic 范式）
+
+本 skill 是 [Anthropic *Building Effective Agents*](https://www.anthropic.com/research/building-effective-agents) 几种核心 workflow 模式的纯 prompt 实现。对应映射：
+
+| 设计模式 | 在本 skill 中的应用 |
+|---|---|
+| **Routing**（分类路由）| Step 0 Instrument Router：根据资产类型（A 股 / ETF / 美股 / 港股 / 个股 / 行业 / 大盘）分流到不同指标模块组合 |
+| **Orchestrator-Worker**（编排者-工人）| Factor Layer 是 Orchestrator，7 个 worker（Quality / Growth / Valuation / Trend / Liquidity / Regime / Tail Risk）并行打分后汇总 |
+| **Parallelization · Sectioning**（并行分段）| 7 因子之间相互正交、独立计算，避免 double counting；同时 8 位大师 narration 也是 sectioning 并行 |
+| **Evaluator-Optimizer**（评估者-优化器）| 置信度 4 子项 (data_completeness / source_quality / factor_consistency / market_fit) 取 min（瓶颈思维而非乘积），相当于轻量化 Evaluator 反向校准 Decision |
+| **Narrator Pattern**（叙述者）| 8 位投资大师降级为 evidence selector + narrator，不参与决策、只参与解释 —— 把"人格分歧"从决策层移到叙述层，杜绝 vote-based double counting |
+
+### 工程化要点（vs 拖拽式智能体平台 Coze / Dify）
+
+- **纯 prompt 编排**：所有 agent 间协调通过 prompt context 显式传递，无运行时框架依赖 → 可在任何支持 system prompt 的 LLM 上运行（Claude / GPT / Gemini / DeepSeek / Kimi）
+- **可移植性**：核心契约（四层架构 + 7 因子定义 + 评分阈值）以 markdown 文件存在，复制即部署
+- **可审计**：所有 agent 决策路径在 prompt context 中显式可见，不依赖隐式 chain-of-thought 状态
+- **drift 可追踪**：核心因子定义变更通过 git diff 显式呈现，不会因平台版本升级导致行为漂移
+
+---
+
+## 销售场景迁移逻辑（toB 销售 / 售前 / 客户成功）
+
+同套架构可以**直接迁移**到 B2B 销售决策辅助，因为底层认知动作（Evidence → Factor → Decision → Narration）和投资分析同构：
+
+| 投资分析层 | toB 销售对应层 |
+|---|---|
+| Step 0 Instrument Router | **客户分类路由**：KA / SMB / 政企 / 出海客户 → 决定开哪些 sales playbook |
+| Evidence Layer | **客户事实层**：公司架构 / 技术栈 / 决策链 / 财务公开数据 / 行业 PR / 招聘信号 |
+| Factor Layer（7 因子）| **客户 7 因子打分**：业务匹配度 / 预算成熟度 / 决策链清晰度 / 技术匹配度 / 时机窗口 / 竞品压力 / 风险信号 |
+| Decision Layer | **销售决策**：要不要投入 / pursue level / POC 节奏 / 资源调度 |
+| Narration Layer（8 大师）| **8 角色客户模拟**：CEO / CFO / CTO / 业务负责人 / 采购 / IT / 法务 / 终端用户，预演他们各自的关注点和反驳 |
+| 7 因子并行打分 | **避免 sales rep 单点偏见**：多视角并行评估 → 加权 → 唯一决策来源 |
+| 置信度 4 子项 | **销售置信度 4 子项**：客户信息完整度 / 信号质量 / 多源一致性 / 市场时机匹配 |
+
+**实际可落地的 4 个销售 Agent**（基于本 skill 架构）：
+1. **客户决策地图 Agent**：输入公司名 → 输出完整 Account Map（Step 0 Router + Evidence Layer）
+2. **机会 qualification Agent**：基于 BANT / MEDDIC 7 因子打分 → 输出 pursue / disqualify 信号（Factor Layer）
+3. **多角色客户模拟器**：8 决策角色预演客户内部讨论 → 输出预期反驳和应对（Narrator）
+4. **POC 风险评估 Agent**：项目 4 子项 confidence 评估 → 输出 POC 资源投入建议（Evaluator-Optimizer）
+
+> 关于"投资分析 vs 销售分析"的同构性：两者本质都是 **不完整信息下的多视角加权决策**。投资分析对的是企业基本面 / 市场行为 / 估值；销售分析对的是客户业务 / 决策链 / 时机。同套 Multi-Agent 编排框架同样适用。
 
 ---
 
