@@ -10,7 +10,9 @@
 
 纯 prompt 驱动，无外部代码依赖，数据通过 WebSearch 获取。
 
-**Multi-Agent 设计模式实操（Orchestrator-Worker · Routing · Parallelization · Evaluator-Optimizer · Narrator）· 架构可直接迁移到 toB 销售决策辅助**
+**Multi-Agent workflow 设计模式 prompt-level mapping（Routing · Orchestrator-Worker · Parallelization · Evaluator-Optimizer · Narrator）· 同构架构可迁移到 toB 销售决策辅助**
+
+> 注：本 skill 是 **prompt-only**，无 runtime agent 系统（无 agent 间通信 / 无 tool call / 无 autonomous loop）。下方设计模式段是把 Anthropic *Building Effective Agents* 论文里的 workflow 思想用纯 prompt 组织 LLM 的行为，**不是工程实现**。
 
 [快速开始](#使用方式) · [四层架构](#四层架构v2-重构) · [Multi-Agent 设计模式](#multi-agent-设计模式anthropic-范式) · [销售场景迁移](#销售场景迁移逻辑tob-销售--售前--客户成功) · [开源 core vs 私有 runtime](#architecture-open-core-vs-private-runtime) · [免责声明](#免责声明)
 
@@ -86,9 +88,9 @@ Narration Layer                    ← 8 位大师解释（不投票）
 
 ---
 
-## Multi-Agent 设计模式（Anthropic 范式）
+## Multi-Agent workflow 模式 · prompt-level mapping
 
-本 skill 是 [Anthropic *Building Effective Agents*](https://www.anthropic.com/research/building-effective-agents) 几种核心 workflow 模式的纯 prompt 实现。对应映射：
+本 skill 在 prompt 层把 [Anthropic *Building Effective Agents*](https://www.anthropic.com/research/building-effective-agents) 几种核心 workflow 模式做了**同构映射**。**这不是 runtime agent 系统的实现**——没有 agent 间通信、没有 tool call、没有 autonomous loop——只是把论文中的设计思想用纯 prompt 组织一次 LLM 推理的输出结构。对应映射：
 
 | 设计模式 | 在本 skill 中的应用 |
 |---|---|
@@ -98,12 +100,13 @@ Narration Layer                    ← 8 位大师解释（不投票）
 | **Evaluator-Optimizer**（评估者-优化器）| 置信度 4 子项 (data_completeness / source_quality / factor_consistency / market_fit) 取 min（瓶颈思维而非乘积），相当于轻量化 Evaluator 反向校准 Decision |
 | **Narrator Pattern**（叙述者）| 8 位投资大师降级为 evidence selector + narrator，不参与决策、只参与解释 —— 把"人格分歧"从决策层移到叙述层，杜绝 vote-based double counting |
 
-### 工程化要点（vs 拖拽式智能体平台 Coze / Dify）
+### Prompt-only 设计选择（vs runtime agent 平台 Coze / Dify / LangGraph）
 
-- **纯 prompt 编排**：所有 agent 间协调通过 prompt context 显式传递，无运行时框架依赖 → 可在任何支持 system prompt 的 LLM 上运行（Claude / GPT / Gemini / DeepSeek / Kimi）
-- **可移植性**：核心契约（四层架构 + 7 因子定义 + 评分阈值）以 markdown 文件存在，复制即部署
-- **可审计**：所有 agent 决策路径在 prompt context 中显式可见，不依赖隐式 chain-of-thought 状态
-- **drift 可追踪**：核心因子定义变更通过 git diff 显式呈现，不会因平台版本升级导致行为漂移
+- **Prompt 结构组织**：单次 LLM 推理内分阶段输出（Step 0 → Evidence → Factor → Decision → Narration），不涉及 agent 间消息传递或工具调用
+- **可移植性**：核心契约（四层架构 + 7 因子定义 + 评分阈值）以 markdown 文件存在，复制即部署 → 适配任何支持 system prompt 的 LLM（Claude / GPT / Gemini / DeepSeek / Kimi）
+- **可审计**：所有推理路径在 prompt 输出中显式可见，不依赖隐式 chain-of-thought 状态
+- **drift 可追踪**：核心因子定义变更通过 git diff 显式呈现
+- **何时该升级到真正的 agent runtime**：当需要多轮自主决策、外部工具调用、跨会话状态时，本 skill 不够 —— 升级到 LangGraph / Microsoft Agent Framework / Dify 工作流
 
 ---
 
@@ -121,11 +124,11 @@ Narration Layer                    ← 8 位大师解释（不投票）
 | 7 因子并行打分 | **避免 sales rep 单点偏见**：多视角并行评估 → 加权 → 唯一决策来源 |
 | 置信度 4 子项 | **销售置信度 4 子项**：客户信息完整度 / 信号质量 / 多源一致性 / 市场时机匹配 |
 
-**实际可落地的 4 个销售 Agent**（基于本 skill 架构）：
-1. **客户决策地图 Agent**：输入公司名 → 输出完整 Account Map（Step 0 Router + Evidence Layer）
-2. **机会 qualification Agent**：基于 BANT / MEDDIC 7 因子打分 → 输出 pursue / disqualify 信号（Factor Layer）
-3. **多角色客户模拟器**：8 决策角色预演客户内部讨论 → 输出预期反驳和应对（Narrator）
-4. **POC 风险评估 Agent**：项目 4 子项 confidence 评估 → 输出 POC 资源投入建议（Evaluator-Optimizer）
+**4 个销售场景 prompt 模板**（基于本 skill 同构架构，prompt-level 不是 runtime agent）：
+1. **客户决策地图 prompt**：输入公司名 → LLM 单次推理输出完整 Account Map（Step 0 Router + Evidence Layer 思想）
+2. **机会 qualification prompt**：基于 BANT / MEDDIC 7 因子打分 → 输出 pursue / disqualify 信号（Factor Layer 思想）
+3. **多角色客户模拟器 prompt**：8 决策角色预演客户内部讨论 → 输出预期反驳和应对（Narrator 思想）
+4. **POC 风险评估 prompt**：项目 4 子项 confidence 评估 → 输出 POC 资源投入建议（Evaluator-Optimizer 思想）
 
 > 关于"投资分析 vs 销售分析"的同构性：两者本质都是 **不完整信息下的多视角加权决策**。投资分析对的是企业基本面 / 市场行为 / 估值；销售分析对的是客户业务 / 决策链 / 时机。同套 Multi-Agent 编排框架同样适用。
 
